@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import time
+import hashlib
 from datetime import datetime
 import os
 
@@ -19,73 +20,41 @@ SITES = [
     {"name": "More Than Meeples", "url": "https://morethanmeeples.com.au/search?q=pokemon"},
 ]
 
-KEYWORDS = ["pokemon", "tcg", "etb", "elite trainer", "booster", "pre-order", "preorder", "30th", "anniversary", "celebration"]
+state = {}
 
-def send_discord_alert(site_name, products, is_30th=False):
-    color = 0xff0000 if is_30th else 0x00aa00
-    title = f"🔥 {site_name} - 30th Anniversary Found!" if is_30th else f"📢 {site_name} - Pokémon Preorder"
-    
-    embed = {
-        "title": title,
-        "color": color,
-        "description": f"Found {len(products)} relevant item(s)",
-        "timestamp": datetime.now().isoformat(),
-        "fields": []
-    }
-    
-    for p in products[:5]:
-        embed["fields"].append({
-            "name": p['title'][:100],
-            "value": f"**Price:** {p['price']}\n**Link:** {p['link']}"
-        })
-    
+def send_discord_alert(site_name):
     try:
-        requests.post(DISCORD_WEBHOOK, json={"embeds": [embed]})
-        print(f"[{datetime.now()}] Alert sent - {site_name}")
+        requests.post(DISCORD_WEBHOOK, json={
+            "content": f"🚨 **NEW POKÉMON DROP** on {site_name}!\nGo check for preorders now."
+        })
     except:
         pass
 
-def find_products(html, site_name):
-    soup = BeautifulSoup(html, 'html.parser')
-    items = soup.find_all(['li', 'div', 'article'], class_=lambda x: x and any(c in str(x).lower() for c in ['product', 'item']))
-    found = []
-    is_30th = False
-    
-    for item in items:
-        title_tag = item.find(['h2', 'h3', 'a'])
-        title = title_tag.get_text(strip=True) if title_tag else ""
-        
-        if not any(kw.lower() in title.lower() for kw in KEYWORDS):
-            continue
-            
-        price_tag = item.find(class_=lambda x: x and 'price' in str(x).lower())
-        price = price_tag.get_text(strip=True) if price_tag else "N/A"
-        
-        link_tag = item.find('a', href=True)
-        link = link_tag['href'] if link_tag else ""
-        if link and not link.startswith('http'):
-            link = f"https://{site_name.lower().replace(' ', '')}.com.au{link if link.startswith('/') else '/' + link}"
-        
-        found.append({'title': title, 'price': price, 'link': link})
-        if any(kw.lower() in title.lower() for kw in ["30th", "anniversary"]):
-            is_30th = True
-    return found, is_30th
-
 def main():
-    print(f"[{datetime.now()}] Clean Pokémon Preorder Monitor Started")
+    print(f"[{datetime.now()}] Full Pokémon Monitor Running (10 sites)")
+    print("Only alerting on meaningful changes...\n")
+    
     while True:
         for site in SITES:
             try:
                 headers = {'User-Agent': 'Mozilla/5.0'}
                 resp = requests.get(site["url"], headers=headers, timeout=15)
-                if resp.status_code == 200:
-                    products, is_30th = find_products(resp.text, site["name"])
-                    if products:
-                        print(f"Found on {site['name']}")
-                        send_discord_alert(site["name"], products, is_30th)
+                if resp.status_code != 200:
+                    continue
+                
+                # Cleaner content hash to reduce noise
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                main_content = soup.get_text()[:8000]  # Focus on main area
+                current_hash = hashlib.md5(main_content.encode('utf-8', errors='ignore')).hexdigest()
+                
+                if site["name"] in state and state[site["name"]] != current_hash:
+                    print(f"[{datetime.now()}] Change detected on {site['name']}")
+                    send_discord_alert(site["name"])
+                
+                state[site["name"]] = current_hash
             except:
                 continue
-        time.sleep(120)
+        time.sleep(300)  # 5 minutes
 
 if __name__ == "__main__":
     main()
