@@ -1,9 +1,13 @@
+from flask import Flask
+import threading
 import requests
 from bs4 import BeautifulSoup
 import time
 import hashlib
 from datetime import datetime
 import os
+
+app = Flask(__name__)
 
 DISCORD_WEBHOOK = os.environ.get("DISCORD_WEBHOOK")
 
@@ -19,21 +23,22 @@ SITES = [
 
 state = {}
 
+@app.route('/')
+def home():
+    return "Pokémon TCG Preorder Monitor is running 24/7 ✅"
+
 def send_discord_alert(site_name, is_30th=False):
+    emoji = "🔥" if is_30th else "📢"
+    msg = f"{emoji} **NEW DROP** on {site_name}!"
     if is_30th:
-        content = f"🔥 **30TH ANNIVERSARY DROP** on {site_name}!\nGo check now!"
-    else:
-        content = f"📢 New Pokémon TCG drop on {site_name}"
-    
+        msg += " (30th Anniversary detected!)"
     try:
-        requests.post(DISCORD_WEBHOOK, json={"content": content})
+        requests.post(DISCORD_WEBHOOK, json={"content": msg})
     except:
         pass
 
-def main():
-    print(f"[{datetime.now()}] Pokémon TCG Monitor Started")
-    print("Strict 30th Anniversary detection\n")
-    
+def monitor_loop():
+    print(f"[{datetime.now()}] Monitor loop started")
     while True:
         for site in SITES:
             try:
@@ -43,18 +48,12 @@ def main():
                     continue
                 
                 soup = BeautifulSoup(resp.text, 'html.parser')
-                page_text = soup.get_text().lower()
-                
-                current_hash = hashlib.md5(page_text.encode('utf-8', errors='ignore')).hexdigest()
+                text = soup.get_text().lower()
+                current_hash = hashlib.md5(text.encode('utf-8', errors='ignore')).hexdigest()
                 
                 if site["name"] in state and state[site["name"]] != current_hash:
-                    # Strict 30th check
-                    is_30th = any(phrase in page_text for phrase in [
-                        "30th anniversary", "30th celebration", "pokemon 30th", 
-                        "30 anniversary", "celebration etb", "30th etb"
-                    ])
-                    
-                    print(f"[{datetime.now()}] Change on {site['name']} {'(30th!)' if is_30th else ''}")
+                    is_30th = any(phrase in text for phrase in ["30th anniversary", "30th celebration", "pokemon 30th"])
+                    print(f"New drop on {site['name']}")
                     send_discord_alert(site["name"], is_30th)
                 
                 state[site["name"]] = current_hash
@@ -62,5 +61,9 @@ def main():
                 continue
         time.sleep(300)
 
+# Start monitor in background
+threading.Thread(target=monitor_loop, daemon=True).start()
+
 if __name__ == "__main__":
-    main()
+    print("Starting Pokémon Monitor Web Service...")
+    app.run(host='0.0.0.0', port=10000)
