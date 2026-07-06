@@ -20,21 +20,19 @@ SITES = [
 state = {}
 
 def send_discord_alert(site_name, is_30th=False):
-    emoji = "🔥" if is_30th else "📢"
-    title = f"{emoji} **NEW DROP** on {site_name}!"
     if is_30th:
-        title += " (30th Anniversary detected!)"
+        content = f"🔥 **30TH ANNIVERSARY DROP** on {site_name}!\nGo check now!"
+    else:
+        content = f"📢 New Pokémon TCG drop on {site_name}"
     
     try:
-        requests.post(DISCORD_WEBHOOK, json={
-            "content": title + "\nCheck the site for new TCG preorders."
-        })
+        requests.post(DISCORD_WEBHOOK, json={"content": content})
     except:
         pass
 
 def main():
-    print(f"[{datetime.now()}] Pokémon TCG Preorder Monitor Started")
-    print("Focused on new drops only - especially 30th Anniversary\n")
+    print(f"[{datetime.now()}] Pokémon TCG Monitor Started")
+    print("Strict 30th Anniversary detection\n")
     
     while True:
         for site in SITES:
@@ -45,19 +43,24 @@ def main():
                     continue
                 
                 soup = BeautifulSoup(resp.text, 'html.parser')
-                main_content = soup.get_text()[:10000]
-                current_hash = hashlib.md5(main_content.encode('utf-8', errors='ignore')).hexdigest()
+                page_text = soup.get_text().lower()
+                
+                current_hash = hashlib.md5(page_text.encode('utf-8', errors='ignore')).hexdigest()
                 
                 if site["name"] in state and state[site["name"]] != current_hash:
-                    print(f"[{datetime.now()}] New drop detected on {site['name']}")
-                    # Check if 30th Anniversary is mentioned
-                    is_30th = "30th" in main_content.lower() or "anniversary" in main_content.lower()
+                    # Strict 30th check
+                    is_30th = any(phrase in page_text for phrase in [
+                        "30th anniversary", "30th celebration", "pokemon 30th", 
+                        "30 anniversary", "celebration etb", "30th etb"
+                    ])
+                    
+                    print(f"[{datetime.now()}] Change on {site['name']} {'(30th!)' if is_30th else ''}")
                     send_discord_alert(site["name"], is_30th)
                 
                 state[site["name"]] = current_hash
             except:
                 continue
-        time.sleep(300)  # Check every 5 minutes
+        time.sleep(300)
 
 if __name__ == "__main__":
     main()
