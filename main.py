@@ -29,21 +29,22 @@ def home():
 
 def send_discord_alert(site_name, is_30th=False):
     emoji = "🔥" if is_30th else "✅"
-    msg = f"{emoji} **PRE-ORDER READY** on {site_name}!"
+    msg = f"{emoji} **PRE-ORDER READY** on {site_name}!\n"
     if is_30th:
-        msg += " (30th Anniversary!)"
+        msg += "30th Anniversary detected!\n"
+    msg += f"→ {site_name} Search: {SITES[0]['url'] if 'Mind Games' in site_name else 'Check site'}"
     try:
         requests.post(DISCORD_WEBHOOK, json={"content": msg})
     except:
         pass
 
 def is_preorder_ready(text):
-    ready_phrases = ["pre order now", "pre-order now", "add to cart", "buy now", "in stock", "preorder now"]
-    not_ready = ["coming soon", "notify me when", "sold out"]
+    ready_phrases = ["pre order now", "pre-order now", "add to cart", "buy now", "in stock", "preorder now", "add to bag"]
+    not_ready = ["coming soon", "notify me when", "sold out", "pre-order soon"]
     return any(phrase in text.lower() for phrase in ready_phrases) and not any(phrase in text.lower() for phrase in not_ready)
 
 def monitor_loop():
-    print("Monitor started - looking for Pre-Order Ready items")
+    print("Monitor started")
     while True:
         for site in SITES:
             try:
